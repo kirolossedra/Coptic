@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Names Database - Supabase</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.39.3/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
             margin: 0;
@@ -305,25 +305,48 @@
     </div>
 
     <script>
-        // Initialize logging immediately
-        console.log('🚀 SCRIPT STARTED: Page loading...');
+        // Wait for library to load with multiple attempts
+        let loadAttempts = 0;
+        const maxAttempts = 10;
         
-        // Initialize Supabase client
-        const supabaseUrl = 'https://jxemqeugeytuaxpuhrgp.supabase.co';
-        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4ZW1xZXVnZXl0dWF4cHVocmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwNTg4NzUsImV4cCI6MjA3MTYzNDg3NX0.mxmFOK5zENGxjwh4xo_kHPPr6NoscqpiNhXiMUwcj78';
-        
-        console.log('🔗 SUPABASE CONFIG:', { url: supabaseUrl, keyPrefix: supabaseKey.substring(0, 20) });
-        
-        // Check if Supabase is loaded
-        if (typeof window.supabase === 'undefined') {
-            console.error('❌ SUPABASE NOT LOADED: window.supabase is undefined');
-            alert('ERROR: Supabase library failed to load!');
-        } else {
-            console.log('✅ SUPABASE LIBRARY LOADED');
+        function checkSupabaseLoaded() {
+            console.log(`🔄 ATTEMPT ${loadAttempts + 1}: Checking if Supabase is loaded...`);
+            
+            if (typeof window.supabase !== 'undefined') {
+                console.log('✅ SUPABASE LIBRARY LOADED SUCCESSFULLY!');
+                initializeApp();
+                return;
+            }
+            
+            loadAttempts++;
+            if (loadAttempts < maxAttempts) {
+                console.log(`⏳ WAITING: Supabase not ready yet, trying again in 500ms...`);
+                setTimeout(checkSupabaseLoaded, 500);
+            } else {
+                console.error('❌ SUPABASE FAILED TO LOAD after 10 attempts!');
+                alert('CRITICAL ERROR: Supabase library failed to load!\n\nCheck your internet connection and refresh the page.');
+            }
         }
         
-        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
-        console.log('✅ SUPABASE CLIENT CREATED:', supabase);
+        // Start checking when script loads
+        checkSupabaseLoaded();
+        
+        function initializeApp() {
+            console.log('🚀 INITIALIZING APP...');
+            
+            // Initialize Supabase client
+            const supabaseUrl = 'https://jxemqeugeytuaxpuhrgp.supabase.co';
+            const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4ZW1xZXVnZXl0dWF4cHVocmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwNTg4NzUsImV4cCI6MjA3MTYzNDg3NX0.mxmFOK5zENGxjwh4xo_kHPPr6NoscqpiNhXiMUwcj78';
+            
+            console.log('🔗 CREATING SUPABASE CLIENT...');
+            console.log('URL:', supabaseUrl);
+            console.log('Key prefix:', supabaseKey.substring(0, 20));
+            
+            const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+            console.log('✅ SUPABASE CLIENT CREATED:', supabase);
+            
+            // Make supabase globally available
+            window.mySupabase = supabase;
 
         // DOM elements
         let form, messageDiv, recordsList, submitBtn, debugLog;
@@ -400,10 +423,8 @@
         async function testConnection() {
             try {
                 logDebug('🌐 TESTING CONNECTION: Starting Supabase connection test');
-                logDebug(`🔗 URL: ${supabaseUrl}`);
-                logDebug(`🔑 KEY: ${supabaseKey.substring(0, 30)}...`);
 
-                const { data, error } = await supabase
+                const { data, error } = await window.mySupabase
                     .from('names')
                     .select('count', { count: 'exact', head: true });
 
@@ -425,6 +446,8 @@
                 return false;
             }
         }
+        
+        } // End of initializeApp function
 
         // Handle form submission
         async function handleFormSubmit(e) {
@@ -463,7 +486,7 @@
 
                 logDebug(`📡 CALLING: supabase.from('names').insert([{ id: ${id} }]).select()`);
                 
-                const { data, error } = await supabase
+                const { data, error } = await window.mySupabase
                     .from('names')
                     .insert([{ id: parseInt(id) }])
                     .select();
@@ -504,7 +527,7 @@
 
                 logDebug(`📡 CALLING: supabase.from('names').select('*').order('id', { ascending: true })`);
 
-                const { data, error } = await supabase
+                const { data, error } = await window.mySupabase
                     .from('names')
                     .select('*')
                     .order('id', { ascending: true });

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MongoDB Data API Demo</title>
+</head>
+<body>
+  <h1>MongoDB Single HTML Demo</h1>
+
+  <input type="text" id="inputValue" placeholder="Enter something..." />
+  <button onclick="addData()">Add to DB</button>
+  <button onclick="searchData()">Search in DB</button>
+
+  <p id="result"></p>
+
+  <script>
+    const API_URL = "https://data.mongodb-api.com/app/<your-app-id>/endpoint/data/v1";
+    const API_KEY = "<your-api-key>";
+    const DATA_SOURCE = "Cluster0"; // default
+    const DB_NAME = "mydb";
+    const COLLECTION = "items";
+
+    async function addData() {
+      const value = document.getElementById("inputValue").value;
+      const res = await fetch(`${API_URL}/action/insertOne`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "api-key": API_KEY,
+        },
+        body: JSON.stringify({
+          dataSource: DATA_SOURCE,
+          database: DB_NAME,
+          collection: COLLECTION,
+          document: { value },
+        }),
+      });
+      const data = await res.json();
+      document.getElementById("result").innerText = "Added: " + value;
+    }
+
+    async function searchData() {
+      const value = document.getElementById("inputValue").value;
+      const res = await fetch(`${API_URL}/action/findOne`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "api-key": API_KEY,
+        },
+        body: JSON.stringify({
+          dataSource: DATA_SOURCE,
+          database: DB_NAME,
+          collection: COLLECTION,
+          filter: { value },
+        }),
+      });
+      const data = await res.json();
+      document.getElementById("result").innerText =
+        data.document ? JSON.stringify(data.document) : "Not found";
+    }
+  </script>
+</body>
+</html>

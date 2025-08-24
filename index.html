@@ -2,62 +2,61 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>MongoDB Data API Demo</title>
+  <title>Supabase Names Table Demo</title>
+  <script type="module">
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+    // Initialize Supabase client with anon public key
+    const supabase = createClient(
+      "https://jxemqeugeytuaxpuhrgp.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4ZW1xZXVnZXl0dWF4cHVocmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwNTg4NzUsImV4cCI6MjA3MTYzNDg3NX0.mxmFOK5zENGxjwh4xo_kHPPr6NoscqpiNhXiMUwcj78"
+    );
+
+    // Fetch all numbers from the table
+    async function fetchNumbers() {
+      const { data, error } = await supabase.from('names').select('*');
+      if (error) {
+        console.error("Error fetching numbers:", error);
+        return;
+      }
+
+      const list = document.getElementById("numbers-list");
+      list.innerHTML = "";
+      data.forEach(row => {
+        const li = document.createElement("li");
+        // Replace 'value' with your actual column name if different
+        li.textContent = row.value;
+        list.appendChild(li);
+      });
+    }
+
+    // Add a new number to the table
+    async function addNumber() {
+      const input = document.getElementById("new-number");
+      const numberValue = parseInt(input.value.trim(), 10);
+      if (isNaN(numberValue)) {
+        alert("Please enter a valid integer");
+        return;
+      }
+
+      const { data, error } = await supabase.from('names').insert([{ value: numberValue }]);
+      if (error) {
+        console.error("Error adding number:", error);
+        return;
+      }
+
+      input.value = "";
+      fetchNumbers(); // refresh list
+    }
+
+    window.onload = fetchNumbers;
+    window.addNumber = addNumber;
+  </script>
 </head>
 <body>
-  <h1>MongoDB Single HTML Demo</h1>
-
-  <input type="text" id="inputValue" placeholder="Enter something..." />
-  <button onclick="addData()">Add to DB</button>
-  <button onclick="searchData()">Search in DB</button>
-
-  <p id="result"></p>
-
-  <script>
-    const API_URL = "https://data.mongodb-api.com/app/<your-app-id>/endpoint/data/v1";
-    const API_KEY = "<your-api-key>";
-    const DATA_SOURCE = "Cluster0"; // default
-    const DB_NAME = "mydb";
-    const COLLECTION = "items";
-
-    async function addData() {
-      const value = document.getElementById("inputValue").value;
-      const res = await fetch(`${API_URL}/action/insertOne`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "api-key": API_KEY,
-        },
-        body: JSON.stringify({
-          dataSource: DATA_SOURCE,
-          database: DB_NAME,
-          collection: COLLECTION,
-          document: { value },
-        }),
-      });
-      const data = await res.json();
-      document.getElementById("result").innerText = "Added: " + value;
-    }
-
-    async function searchData() {
-      const value = document.getElementById("inputValue").value;
-      const res = await fetch(`${API_URL}/action/findOne`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "api-key": API_KEY,
-        },
-        body: JSON.stringify({
-          dataSource: DATA_SOURCE,
-          database: DB_NAME,
-          collection: COLLECTION,
-          filter: { value },
-        }),
-      });
-      const data = await res.json();
-      document.getElementById("result").innerText =
-        data.document ? JSON.stringify(data.document) : "Not found";
-    }
-  </script>
+  <h1>Supabase Names Table Demo (int8)</h1>
+  <input type="number" id="new-number" placeholder="Enter a number">
+  <button onclick="addNumber()">Add Number</button>
+  <ul id="numbers-list"></ul>
 </body>
 </html>

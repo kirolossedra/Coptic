@@ -2,613 +2,493 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Names Database - Supabase</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ancient Coptic Dictionary</title>
+    <!-- Firebase SDK -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.7.0/jspdf.plugin.autotable.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
+        import { getDatabase, ref, push, get, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAjBbnm8F76BCb9C5fluUyoZ2QnMSXlHOo",
+            authDomain: "test-c7bf3.firebaseapp.com",
+            databaseURL: "https://test-c7bf3-default-rtdb.firebaseio.com",
+            projectId: "test-c7bf3",
+            storageBucket: "test-c7bf3.firebasestorage.app",
+            messagingSenderId: "573697013702",
+            appId: "1:573697013702:web:fe132fc4d796c06bdbe4c7"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('field-form');
+            const pdfForm = document.getElementById('pdf-form');
+            const bohairicInput = document.getElementById('bohairic');
+            const oldCopticInput = document.getElementById('old-coptic');
+            const sahidicInput = document.getElementById('sahidic');
+            const otherDialectsInput = document.getElementById('other-dialects');
+            const meaningInput = document.getElementById('meaning');
+            const etymologyInput = document.getElementById('etymology');
+            const pdfSortSelect = document.getElementById('pdf-sort');
+            const submitButton = document.querySelector('button[type="submit"]');
+            const notificationContainer = document.getElementById('notification-container');
+
+            // Create a notification function
+            function showNotification(message, isError = false) {
+                const notification = document.createElement('div');
+                notification.className = `notification ${isError ? 'error' : 'success'}`;
+                notification.textContent = message;
+                notificationContainer.appendChild(notification);
+                
+                // Make notification visible with animation
+                setTimeout(() => {
+                    notification.classList.add('visible');
+                }, 10);
+                
+                // Remove notification after delay
+                setTimeout(() => {
+                    notification.classList.remove('visible');
+                    setTimeout(() => {
+                        notification.remove();
+                    }, 300);
+                }, 2000);
+            }
+
+            // Function to check if entry already exists
+            function checkEntryExists(bohairic, sahidic, meaning) {
+                return get(ref(database, 'fields'))
+                    .then((snapshot) => {
+                        if (snapshot.exists()) {
+                            const data = snapshot.val();
+                            return Object.values(data).some(entry => 
+                                (entry.bohairic && entry.bohairic.toLowerCase() === bohairic.toLowerCase()) ||
+                                (entry.sahidic && entry.sahidic.toLowerCase() === sahidic.toLowerCase()) ||
+                                (entry.meaning && entry.meaning.toLowerCase() === meaning.toLowerCase())
+                            );
+                        }
+                        return false;
+                    });
+            }
+
+            form.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const bohairic = bohairicInput.value.trim();
+                const oldCoptic = oldCopticInput.value.trim();
+                const sahidic = sahidicInput.value.trim();
+                const otherDialects = otherDialectsInput.value.trim();
+                const meaning = meaningInput.value.trim();
+                const etymology = etymologyInput.value.trim();
+
+                // Check if at least one field is filled
+                if (!bohairic && !oldCoptic && !sahidic && !otherDialects && !meaning && !etymology) {
+                    showNotification('Please fill in at least one field before submission!', true);
+                    return;
+                }
+
+                // Check if entry already exists (basic duplicate check)
+                checkEntryExists(bohairic, sahidic, meaning)
+                    .then((exists) => {
+                        if (exists && (bohairic || sahidic || meaning)) {
+                            showNotification('A similar entry already exists!', true);
+                            return;
+                        }
+
+                        // Entry doesn't exist, proceed with saving
+                        return push(ref(database, 'fields/'), {
+                            bohairic: bohairic || '',
+                            oldCoptic: oldCoptic || '',
+                            sahidic: sahidic || '',
+                            otherDialects: otherDialects || '',
+                            meaning: meaning || '',
+                            etymology: etymology || '',
+                            timestamp: Date.now()
+                        });
+                    })
+                    .then((result) => {
+                        if (result) {
+                            showNotification('Entry added successfully! ✅');
+                            // Clear all inputs
+                            bohairicInput.value = '';
+                            oldCopticInput.value = '';
+                            sahidicInput.value = '';
+                            otherDialectsInput.value = '';
+                            meaningInput.value = '';
+                            etymologyInput.value = '';
+                            bohairicInput.focus();
+                        }
+                    })
+                    .catch((error) => {
+                        console.error("Error saving entry: ", error);
+                        showNotification('Failed to add entry ❌', true);
+                    });
+            });
+
+            pdfForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const selectedSort = pdfSortSelect.value;
+
+                // Get all entries
+                get(ref(database, 'fields'))
+                    .then((snapshot) => {
+                        if (snapshot.exists()) {
+                            const data = snapshot.val();
+                            let entries = [];
+
+                            // Convert to array
+                            Object.keys(data).forEach(key => {
+                                const entry = data[key];
+                                entries.push({
+                                    bohairic: entry.bohairic || '',
+                                    oldCoptic: entry.oldCoptic || '',
+                                    sahidic: entry.sahidic || '',
+                                    otherDialects: entry.otherDialects || '',
+                                    meaning: entry.meaning || '',
+                                    etymology: entry.etymology || '',
+                                    timestamp: new Date(entry.timestamp).toLocaleDateString()
+                                });
+                            });
+
+                            if (entries.length > 0) {
+                                // Sort entries based on selected option
+                                if (selectedSort === 'alphabetical') {
+                                    entries.sort((a, b) => a.bohairic.localeCompare(b.bohairic));
+                                }
+                                
+                                // Generate PDF
+                                generatePDF(entries);
+                            } else {
+                                showNotification('No entries found in the database.', true);
+                            }
+                        } else {
+                            showNotification('No entries found in the database.', true);
+                        }
+                    })
+                    .catch((error) => {
+                        console.error("Error fetching entries: ", error);
+                        showNotification('Failed to generate PDF ❌', true);
+                    });
+            });
+
+            function generatePDF(entries) {
+                try {
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF('landscape');
+                    
+                    // Add title
+                    const title = 'Ancient Coptic Dictionary';
+                    doc.setFontSize(18);
+                    doc.text(title, 14, 20);
+                    
+                    // Add date
+                    doc.setFontSize(10);
+                    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 30);
+                    
+                    // Create table with entries
+                    const tableColumns = ["Bohairic", "Old Coptic", "Sahidic", "Other Dialects", "Meaning", "Egyptian Etymology", "Date Added"];
+                    const tableRows = entries.map(entry => [
+                        entry.bohairic,
+                        entry.oldCoptic,
+                        entry.sahidic,
+                        entry.otherDialects,
+                        entry.meaning,
+                        entry.etymology,
+                        entry.timestamp
+                    ]);
+                    
+                    doc.autoTable({
+                        head: [tableColumns],
+                        body: tableRows,
+                        startY: 35,
+                        styles: { fontSize: 8 },
+                        headStyles: { fillColor: [184, 134, 11] }, // Golden color
+                        columnStyles: {
+                            0: { cellWidth: 35 },
+                            1: { cellWidth: 35 },
+                            2: { cellWidth: 35 },
+                            3: { cellWidth: 35 },
+                            4: { cellWidth: 50 },
+                            5: { cellWidth: 50 },
+                            6: { cellWidth: 25 }
+                        }
+                    });
+                    
+                    // Save PDF
+                    const filename = 'coptic_dictionary_entries.pdf';
+                    doc.save(filename);
+                    
+                    showNotification('PDF generated successfully! ✅');
+                } catch (error) {
+                    console.error("Error generating PDF: ", error);
+                    showNotification('Failed to generate PDF ❌', true);
+                }
+            }
+        });
+    </script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&display=swap');
         
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Cinzel', serif;
+            line-height: 1.6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             min-height: 100vh;
-            padding: 20px;
+            margin: 0;
+            background: linear-gradient(135deg, #d4af37 0%, #f4e4a6 50%, #d4af37 100%);
+            color: #8b4513;
+            background-image: 
+                radial-gradient(circle at 25% 25%, rgba(255,215,0,0.1) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(255,215,0,0.1) 0%, transparent 50%);
         }
-        
+
         .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
+            background: linear-gradient(145deg, #fff8dc, #faf0e6);
+            max-width: 100%;
+            width: 90%;
+            padding: 30px;
             border-radius: 15px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            color: white;
-            padding: 30px;
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.3),
+                inset 0 2px 4px rgba(255, 215, 0, 0.3);
             text-align: center;
+            position: relative;
+            border: 3px solid #d4af37;
         }
-        
-        .header h1 {
+
+        .container::before {
+            content: '';
+            position: absolute;
+            top: -5px;
+            left: -5px;
+            right: -5px;
+            bottom: -5px;
+            background: linear-gradient(45deg, #d4af37, #b8860b, #daa520, #d4af37);
+            border-radius: 20px;
+            z-index: -1;
+        }
+
+        h1 {
+            margin: 0 0 25px;
             font-size: 2.5rem;
-            margin-bottom: 10px;
-            font-weight: 300;
+            color: #8b4513;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            font-weight: 600;
         }
-        
-        .header p {
-            opacity: 0.9;
-            font-size: 1.1rem;
-        }
-        
-        .content {
-            padding: 40px;
-        }
-        
-        .form-section {
-            background: #f8f9ff;
-            border-radius: 12px;
-            padding: 30px;
-            margin-bottom: 30px;
-            border-left: 4px solid #4facfe;
-        }
-        
-        .form-section h2 {
-            color: #333;
-            margin-bottom: 20px;
+
+        h1::after {
+            content: '𓂀';
+            display: block;
             font-size: 1.5rem;
+            color: #d4af37;
+            margin-top: 5px;
         }
-        
-        .form-group {
-            margin-bottom: 20px;
+
+        h2 {
+            font-size: 1.4rem;
+            margin: 30px 0 20px;
+            padding-top: 20px;
+            border-top: 2px solid #d4af37;
+            color: #8b4513;
+            position: relative;
         }
-        
-        .form-group label {
+
+        h2::before {
+            content: '𓊖';
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            top: -15px;
+            background: linear-gradient(145deg, #fff8dc, #faf0e6);
+            padding: 0 10px;
+            color: #d4af37;
+        }
+
+        label {
             display: block;
             margin-bottom: 8px;
-            color: #555;
-            font-weight: 500;
-        }
-        
-        .form-group input {
-            width: 100%;
-            padding: 12px 16px;
-            border: 2px solid #e1e5e9;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: all 0.3s ease;
-        }
-        
-        .form-group input:focus {
-            outline: none;
-            border-color: #4facfe;
-            box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
-        }
-        
-        .btn {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            color: white;
-            border: none;
-            padding: 14px 28px;
-            font-size: 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 500;
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(79, 172, 254, 0.3);
-        }
-        
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-        
-        .records-section {
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            border: 1px solid #e1e5e9;
-        }
-        
-        .records-section h2 {
-            color: #333;
-            margin-bottom: 20px;
-            font-size: 1.5rem;
-        }
-        
-        .debug-section {
-            background: #1a1a1a;
-            color: #00ff00;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 30px;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        
-        .debug-section h3 {
-            color: #ffffff;
-            margin-bottom: 15px;
-            font-size: 1.2rem;
-        }
-        
-        .debug-log {
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-        
-        .log-timestamp {
-            color: #888;
-        }
-        
-        .log-success {
-            color: #00ff00;
-        }
-        
-        .log-error {
-            color: #ff4444;
-        }
-        
-        .log-info {
-            color: #4facfe;
-        }
-        
-        .records-list {
-            max-height: 300px;
-            overflow-y: auto;
-            border: 1px solid #e1e5e9;
-            border-radius: 8px;
-        }
-        
-        .record-item {
-            padding: 15px;
-            border-bottom: 1px solid #f0f0f0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: background-color 0.2s ease;
-        }
-        
-        .record-item:hover {
-            background-color: #f8f9ff;
-        }
-        
-        .record-item:last-child {
-            border-bottom: none;
-        }
-        
-        .record-id {
             font-weight: 600;
-            color: #4facfe;
-            font-size: 1.1rem;
+            color: #8b4513;
+            text-align: left;
         }
-        
-        .record-time {
-            color: #666;
-            font-size: 0.9rem;
-        }
-        
-        .message {
-            padding: 15px;
+
+        input, select, button {
+            width: calc(100% - 24px);
+            padding: 12px;
+            margin-bottom: 15px;
             border-radius: 8px;
-            margin-bottom: 20px;
-            font-weight: 500;
+            border: 2px solid #d4af37;
+            font-family: 'Cinzel', serif;
+            background: rgba(255, 248, 220, 0.8);
         }
-        
-        .message.success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #b8860b;
+            box-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
+            background: #fff;
         }
-        
-        .message.error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+
+        button {
+            background: linear-gradient(145deg, #d4af37, #b8860b);
+            color: white;
+            cursor: pointer;
+            border: none;
+            font-size: 1.1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
-        
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #4facfe;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-right: 10px;
+
+        button:hover {
+            background: linear-gradient(145deg, #b8860b, #daa520);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+
+        .form-section {
+            margin-bottom: 25px;
+            background: rgba(255, 248, 220, 0.3);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(212, 175, 55, 0.3);
         }
-        
-        .empty-state {
-            text-align: center;
-            color: #666;
-            padding: 40px 20px;
-            font-style: italic;
+
+        #pdf-form {
+            background: linear-gradient(145deg, rgba(212, 175, 55, 0.1), rgba(184, 134, 11, 0.1));
+            border: 2px solid #d4af37;
         }
-        
+
+        /* Notification styling */
+        #notification-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .notification {
+            padding: 15px 25px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            opacity: 0;
+            transform: translateX(50px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .notification.success {
+            background: linear-gradient(145deg, #228B22, #32CD32);
+        }
+
+        .notification.error {
+            background: linear-gradient(145deg, #DC143C, #FF6347);
+        }
+
+        .notification.visible {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        /* Egyptian decorative elements */
+        .form-section::before {
+            content: '𓈖𓏏𓂋';
+            display: block;
+            color: #d4af37;
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+
         @media (max-width: 600px) {
+            body {
+                background: linear-gradient(135deg, #daa520 0%, #f4e4a6 50%, #daa520 100%);
+            }
+
             .container {
-                margin: 10px;
-                border-radius: 10px;
+                padding: 15px;
+                width: 95%;
             }
-            
-            .content {
-                padding: 20px;
-            }
-            
-            .form-section, .records-section {
-                padding: 20px;
-            }
-            
-            .header h1 {
+
+            h1 {
                 font-size: 2rem;
+                margin-bottom: 15px;
+            }
+
+            input, select, button {
+                width: calc(100% - 20px);
+                padding: 10px;
+                margin-bottom: 12px;
+                font-size: 0.9rem;
+            }
+
+            .form-section {
+                padding: 15px;
+                margin-bottom: 20px;
+            }
+
+            #notification-container {
+                top: 10px;
+                right: 10px;
+                left: 10px;
+            }
+
+            .notification {
+                padding: 12px 20px;
+                font-size: 0.9rem;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>📝 Names Database</h1>
-            <p>Add and view records in your Supabase database</p>
+        <h1>𓂋𓈖 𓊪𓏏 - Ancient Coptic Dictionary</h1>
+        
+        <div class="form-section">
+            <form id="field-form">
+                <label for="bohairic">Bohairic:</label>
+                <input type="text" id="bohairic" placeholder="Enter Bohairic text...">
+                
+                <label for="old-coptic">Old Coptic:</label>
+                <input type="text" id="old-coptic" placeholder="Enter Old Coptic text...">
+                
+                <label for="sahidic">Sahidic:</label>
+                <input type="text" id="sahidic" placeholder="Enter Sahidic text...">
+                
+                <label for="other-dialects">Other Dialects:</label>
+                <input type="text" id="other-dialects" placeholder="Enter other dialects...">
+                
+                <label for="meaning">Meaning:</label>
+                <input type="text" id="meaning" placeholder="Enter meaning...">
+                
+                <label for="etymology">Egyptian Etymology:</label>
+                <input type="text" id="etymology" placeholder="Enter Egyptian etymology...">
+                
+                <button type="submit">𓈖𓏏𓂋 Add Entry 𓈖𓏏𓂋</button>
+            </form>
         </div>
         
-        <div class="content">
-            <div id="message"></div>
-            
-            <div class="debug-section">
-                <h3>🔍 Debug Console</h3>
-                <button class="btn" onclick="clearDebugLog()" style="margin-bottom: 15px; padding: 8px 16px; font-size: 12px;">Clear Log</button>
-                <div id="debugLog" class="debug-log">Waiting for API calls...</div>
-            </div>
-            
-            <div class="form-section">
-                <h2>Add New Record</h2>
-                <form id="addForm">
-                    <div class="form-group">
-                        <label for="recordId">ID (integer):</label>
-                        <input type="number" id="recordId" name="recordId" required placeholder="Enter a unique ID number">
-                    </div>
-                    <button type="submit" class="btn" id="submitBtn">
-                        Add Record
-                    </button>
-                </form>
-            </div>
-            
-            <div class="records-section">
-                <h2>All Records</h2>
-                <button class="btn" onclick="loadRecords()" style="margin-bottom: 20px;">
-                    🔄 Refresh Records
-                </button>
-                <div id="recordsList" class="records-list">
-                    <div class="empty-state">Click "Refresh Records" to load data</div>
-                </div>
-            </div>
+        <h2>Download Dictionary</h2>
+        <div class="form-section">
+            <form id="pdf-form">
+                <label for="pdf-sort">Sort Order:</label>
+                <select id="pdf-sort" required>
+                    <option value="alphabetical">Alphabetical (by Bohairic)</option>
+                    <option value="chronological">Chronological (Date Added)</option>
+                </select>
+                
+                <button type="submit">𓊪𓏏𓊖 Generate PDF 𓊪𓏏𓊖</button>
+            </form>
         </div>
     </div>
-
-    <script>
-        // Wait for library to load with multiple attempts
-        let loadAttempts = 0;
-        const maxAttempts = 10;
-        
-        function checkSupabaseLoaded() {
-            console.log(`🔄 ATTEMPT ${loadAttempts + 1}: Checking if Supabase is loaded...`);
-            
-            if (typeof window.supabase !== 'undefined') {
-                console.log('✅ SUPABASE LIBRARY LOADED SUCCESSFULLY!');
-                initializeApp();
-                return;
-            }
-            
-            loadAttempts++;
-            if (loadAttempts < maxAttempts) {
-                console.log(`⏳ WAITING: Supabase not ready yet, trying again in 500ms...`);
-                setTimeout(checkSupabaseLoaded, 500);
-            } else {
-                console.error('❌ SUPABASE FAILED TO LOAD after 10 attempts!');
-                alert('CRITICAL ERROR: Supabase library failed to load!\n\nCheck your internet connection and refresh the page.');
-            }
-        }
-        
-        // Start checking when script loads
-        checkSupabaseLoaded();
-        
-        function initializeApp() {
-            console.log('🚀 INITIALIZING APP...');
-            
-            // Initialize Supabase client
-            const supabaseUrl = 'https://jxemqeugeytuaxpuhrgp.supabase.co';
-            const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4ZW1xZXVnZXl0dWF4cHVocmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwNTg4NzUsImV4cCI6MjA3MTYzNDg3NX0.mxmFOK5zENGxjwh4xo_kHPPr6NoscqpiNhXiMUwcj78';
-            
-            console.log('🔗 CREATING SUPABASE CLIENT...');
-            console.log('URL:', supabaseUrl);
-            console.log('Key prefix:', supabaseKey.substring(0, 20));
-            
-            const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
-            console.log('✅ SUPABASE CLIENT CREATED:', supabase);
-            
-            // Make supabase globally available
-            window.mySupabase = supabase;
-
-        // DOM elements
-        let form, messageDiv, recordsList, submitBtn, debugLog;
-
-        // Debug logging function
-        function logDebug(message, type = 'info') {
-            const timestamp = new Date().toLocaleTimeString();
-            const logEntry = `[${timestamp}] ${message}`;
-            
-            // Always log to console first
-            console.log(`[SUPABASE] ${message}`);
-            
-            // Try to log to debug div if it exists
-            if (debugLog) {
-                let className = 'log-info';
-                if (type === 'error') className = 'log-error';
-                if (type === 'success') className = 'log-success';
-                
-                const logElement = document.createElement('span');
-                logElement.className = className;
-                logElement.textContent = logEntry + '\n';
-                
-                debugLog.appendChild(logElement);
-                debugLog.scrollTop = debugLog.scrollHeight;
-            } else {
-                console.log('⚠️ DEBUG LOG ELEMENT NOT FOUND');
-            }
-        }
-
-        // Initialize everything when DOM is ready
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('🎯 DOM LOADED: Initializing elements...');
-            
-            // Get DOM elements
-            form = document.getElementById('addForm');
-            messageDiv = document.getElementById('message');
-            recordsList = document.getElementById('recordsList');
-            submitBtn = document.getElementById('submitBtn');
-            debugLog = document.getElementById('debugLog');
-            
-            console.log('🔍 DOM ELEMENTS:', {
-                form: !!form,
-                messageDiv: !!messageDiv,
-                recordsList: !!recordsList,
-                submitBtn: !!submitBtn,
-                debugLog: !!debugLog
-            });
-            
-            logDebug('🎯 DOM READY: All elements initialized');
-            logDebug('🔗 SUPABASE CLIENT: ' + (supabase ? 'READY' : 'FAILED'));
-            
-            // Test connection immediately
-            testConnection();
-            
-            // Add form event listener
-            if (form) {
-                form.addEventListener('submit', handleFormSubmit);
-                logDebug('📋 FORM LISTENER: Added submit handler');
-            } else {
-                logDebug('❌ FORM ERROR: Form element not found', 'error');
-            }
-        });
-
-        // Clear debug log
-        function clearDebugLog() {
-            if (debugLog) {
-                debugLog.innerHTML = 'Debug log cleared...\n';
-            }
-            console.clear();
-            logDebug('🧹 DEBUG LOG CLEARED');
-        }
-
-        // Test connection function
-        async function testConnection() {
-            try {
-                logDebug('🌐 TESTING CONNECTION: Starting Supabase connection test');
-
-                const { data, error } = await window.mySupabase
-                    .from('names')
-                    .select('count', { count: 'exact', head: true });
-
-                logDebug(`📥 CONNECTION RESPONSE: ${JSON.stringify({ data, error }, null, 2)}`);
-
-                if (error) {
-                    logDebug(`❌ CONNECTION FAILED: ${error.message}`, 'error');
-                    showMessage(`🔴 Connection failed: ${error.message}`, 'error');
-                    return false;
-                }
-
-                logDebug(`✅ CONNECTION SUCCESS!`, 'success');
-                showMessage('🟢 Successfully connected to Supabase!', 'success');
-                return true;
-                
-            } catch (error) {
-                logDebug(`💥 CONNECTION ERROR: ${error.message}`, 'error');
-                showMessage(`🔴 Connection error: ${error.message}`, 'error');
-                return false;
-            }
-        }
-        
-        } // End of initializeApp function
-
-        // Handle form submission
-        async function handleFormSubmit(e) {
-            e.preventDefault();
-            logDebug('📝 FORM SUBMIT: Form submission detected');
-            
-            const formData = new FormData(form);
-            const recordId = formData.get('recordId');
-            
-            logDebug(`📊 FORM DATA: recordId = "${recordId}"`);
-            
-            if (!recordId || isNaN(recordId)) {
-                logDebug('❌ VALIDATION FAILED: Invalid ID provided', 'error');
-                showMessage('❌ Please enter a valid ID number', 'error');
-                return;
-            }
-
-            logDebug(`✅ VALIDATION PASSED: ID "${recordId}" is valid`);
-            await addRecord(recordId);
-        }
-
-        // Show message function
-        function showMessage(text, type = 'success') {
-            messageDiv.innerHTML = `<div class="message ${type}">${text}</div>`;
-            setTimeout(() => {
-                messageDiv.innerHTML = '';
-            }, 5000);
-        }
-
-        // Add record function
-        async function addRecord(id) {
-            try {
-                logDebug(`🚀 STARTING: Add record with ID: ${id}`);
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<span class="loading"></span>Adding...';
-
-                logDebug(`📡 CALLING: supabase.from('names').insert([{ id: ${id} }]).select()`);
-                
-                const { data, error } = await window.mySupabase
-                    .from('names')
-                    .insert([{ id: parseInt(id) }])
-                    .select();
-
-                logDebug(`📥 RESPONSE: ${JSON.stringify({ data, error }, null, 2)}`);
-
-                if (error) {
-                    logDebug(`❌ ERROR DETECTED: ${error.message}`, 'error');
-                    logDebug(`🔍 ERROR DETAILS: ${JSON.stringify(error, null, 2)}`, 'error');
-                    throw error;
-                }
-
-                logDebug(`✅ SUCCESS: Record inserted successfully`, 'success');
-                logDebug(`📊 INSERTED DATA: ${JSON.stringify(data, null, 2)}`, 'success');
-
-                showMessage(`✅ Record added successfully! ID: ${id}`, 'success');
-                form.reset();
-                
-                logDebug(`🔄 TRIGGERING: loadRecords() to refresh list`);
-                loadRecords();
-                
-            } catch (error) {
-                logDebug(`💥 CATCH BLOCK: ${error.message}`, 'error');
-                console.error('Error adding record:', error);
-                showMessage(`❌ Error: ${error.message}`, 'error');
-            } finally {
-                logDebug(`🏁 FINALLY: Resetting button state`);
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = 'Add Record';
-            }
-        }
-
-        // Load records function
-        async function loadRecords() {
-            try {
-                logDebug(`🔄 STARTING: Load all records from 'names' table`);
-                recordsList.innerHTML = '<div class="empty-state"><span class="loading"></span>Loading records...</div>';
-
-                logDebug(`📡 CALLING: supabase.from('names').select('*').order('id', { ascending: true })`);
-
-                const { data, error } = await window.mySupabase
-                    .from('names')
-                    .select('*')
-                    .order('id', { ascending: true });
-
-                logDebug(`📥 RESPONSE: ${JSON.stringify({ data, error }, null, 2)}`);
-
-                if (error) {
-                    logDebug(`❌ ERROR DETECTED: ${error.message}`, 'error');
-                    logDebug(`🔍 ERROR DETAILS: ${JSON.stringify(error, null, 2)}`, 'error');
-                    throw error;
-                }
-
-                logDebug(`✅ SUCCESS: Retrieved ${data.length} records`, 'success');
-
-                if (data.length === 0) {
-                    logDebug(`📭 EMPTY RESULT: No records found in table`);
-                    recordsList.innerHTML = '<div class="empty-state">No records found. Add some records to get started!</div>';
-                    return;
-                }
-
-                logDebug(`🎨 RENDERING: Creating HTML for ${data.length} records`);
-                recordsList.innerHTML = data.map(record => `
-                    <div class="record-item">
-                        <span class="record-id">ID: ${record.id}</span>
-                        <span class="record-time">Record #${record.id}</span>
-                    </div>
-                `).join('');
-
-                logDebug(`✅ RENDERED: Successfully displayed all records`, 'success');
-
-            } catch (error) {
-                logDebug(`💥 CATCH BLOCK: ${error.message}`, 'error');
-                console.error('Error loading records:', error);
-                recordsList.innerHTML = `<div class="empty-state" style="color: #e74c3c;">Error loading records: ${error.message}</div>`;
-            }
-        }
-
-        // Form submit handler - REMOVE THIS OLD ONE
-        // form.addEventListener('submit', async (e) => {
-        //     e.preventDefault();
-        //     const formData = new FormData(form);
-        //     const recordId = formData.get('recordId');
-            
-        //     if (!recordId || isNaN(recordId)) {
-        //         showMessage('❌ Please enter a valid ID number', 'error');
-        //         return;
-        //     }
-
-        //     await addRecord(recordId);
-        // });
-
-        // Test connection on page load - REMOVE THIS OLD ONE  
-        // window.addEventListener('load', async () => {
-        //     try {
-        //         logDebug(`🌐 STARTING: Initial connection test to Supabase`);
-        //         logDebug(`🔗 CONNECTING TO: ${supabaseUrl}`);
-        //         logDebug(`🔑 USING KEY: ${supabaseKey.substring(0, 20)}...`);
-
-        //         logDebug(`📡 CALLING: supabase.from('names').select('count', { count: 'exact', head: true })`);
-
-        //         const { data, error } = await supabase
-        //             .from('names')
-        //             .select('count', { count: 'exact', head: true });
-
-        //         logDebug(`📥 CONNECTION RESPONSE: ${JSON.stringify({ data, error }, null, 2)}`);
-
-        //         if (error) {
-        //             logDebug(`❌ CONNECTION FAILED: ${error.message}`, 'error');
-        //             logDebug(`🔍 CONNECTION ERROR DETAILS: ${JSON.stringify(error, null, 2)}`, 'error');
-        //             throw error;
-        //         }
-
-        //         logDebug(`✅ CONNECTION SUCCESS: Connected to Supabase successfully`, 'success');
-        //         showMessage('🟢 Successfully connected to Supabase!', 'success');
-                
-        //     } catch (error) {
-        //         logDebug(`💥 CONNECTION ERROR: ${error.message}`, 'error');
-        //         console.error('Connection error:', error);
-        //         showMessage(`🔴 Connection failed: ${error.message}`, 'error');
-        //     }
-        // });
-    </script>
+    <!-- Notification container -->
+    <div id="notification-container"></div>
 </body>
 </html>

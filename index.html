@@ -1,62 +1,376 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Supabase Names Table Demo</title>
-  <script type="module">
-    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
-
-    // Initialize Supabase client with anon public key
-    const supabase = createClient(
-      "https://jxemqeugeytuaxpuhrgp.supabase.co",
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4ZW1xZXVnZXl0dWF4cHVocmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwNTg4NzUsImV4cCI6MjA3MTYzNDg3NX0.mxmFOK5zENGxjwh4xo_kHPPr6NoscqpiNhXiMUwcj78"
-    );
-
-    // Fetch all numbers from the table
-    async function fetchNumbers() {
-      const { data, error } = await supabase.from('names').select('*');
-      if (error) {
-        console.error("Error fetching numbers:", error);
-        return;
-      }
-
-      const list = document.getElementById("numbers-list");
-      list.innerHTML = "";
-      data.forEach(row => {
-        const li = document.createElement("li");
-        // Replace 'value' with your actual column name if different
-        li.textContent = row.value;
-        list.appendChild(li);
-      });
-    }
-
-    // Add a new number to the table
-    async function addNumber() {
-      const input = document.getElementById("new-number");
-      const numberValue = parseInt(input.value.trim(), 10);
-      if (isNaN(numberValue)) {
-        alert("Please enter a valid integer");
-        return;
-      }
-
-      const { data, error } = await supabase.from('names').insert([{ value: numberValue }]);
-      if (error) {
-        console.error("Error adding number:", error);
-        return;
-      }
-
-      input.value = "";
-      fetchNumbers(); // refresh list
-    }
-
-    window.onload = fetchNumbers;
-    window.addNumber = addNumber;
-  </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Names Database - Supabase</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.39.3/umd/supabase.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .form-section {
+            background: #f8f9ff;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border-left: 4px solid #4facfe;
+        }
+        
+        .form-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #4facfe;
+            box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(79, 172, 254, 0.3);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .records-section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            border: 1px solid #e1e5e9;
+        }
+        
+        .records-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+        
+        .records-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e1e5e9;
+            border-radius: 8px;
+        }
+        
+        .record-item {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s ease;
+        }
+        
+        .record-item:hover {
+            background-color: #f8f9ff;
+        }
+        
+        .record-item:last-child {
+            border-bottom: none;
+        }
+        
+        .record-id {
+            font-weight: 600;
+            color: #4facfe;
+            font-size: 1.1rem;
+        }
+        
+        .record-time {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        
+        .message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4facfe;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .empty-state {
+            text-align: center;
+            color: #666;
+            padding: 40px 20px;
+            font-style: italic;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .form-section, .records-section {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
 </head>
 <body>
-  <h1>Supabase Names Table Demo (int8)</h1>
-  <input type="number" id="new-number" placeholder="Enter a number">
-  <button onclick="addNumber()">Add Number</button>
-  <ul id="numbers-list"></ul>
+    <div class="container">
+        <div class="header">
+            <h1>📝 Names Database</h1>
+            <p>Add and view records in your Supabase database</p>
+        </div>
+        
+        <div class="content">
+            <div id="message"></div>
+            
+            <div class="form-section">
+                <h2>Add New Record</h2>
+                <form id="addForm">
+                    <div class="form-group">
+                        <label for="recordId">ID (integer):</label>
+                        <input type="number" id="recordId" name="recordId" required placeholder="Enter a unique ID number">
+                    </div>
+                    <button type="submit" class="btn" id="submitBtn">
+                        Add Record
+                    </button>
+                </form>
+            </div>
+            
+            <div class="records-section">
+                <h2>All Records</h2>
+                <button class="btn" onclick="loadRecords()" style="margin-bottom: 20px;">
+                    🔄 Refresh Records
+                </button>
+                <div id="recordsList" class="records-list">
+                    <div class="empty-state">Click "Refresh Records" to load data</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Supabase client
+        const supabaseUrl = 'https://jxemqeugeytuaxpuhrgp.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4ZW1xZXVnZXl0dWF4cHVocmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwNTg4NzUsImV4cCI6MjA3MTYzNDg3NX0.mxmFOK5zENGxjwh4xo_kHPPr6NoscqpiNhXiMUwcj78';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        // DOM elements
+        const form = document.getElementById('addForm');
+        const messageDiv = document.getElementById('message');
+        const recordsList = document.getElementById('recordsList');
+        const submitBtn = document.getElementById('submitBtn');
+
+        // Show message function
+        function showMessage(text, type = 'success') {
+            messageDiv.innerHTML = `<div class="message ${type}">${text}</div>`;
+            setTimeout(() => {
+                messageDiv.innerHTML = '';
+            }, 5000);
+        }
+
+        // Add record function
+        async function addRecord(id) {
+            try {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="loading"></span>Adding...';
+
+                const { data, error } = await supabase
+                    .from('names')
+                    .insert([{ id: parseInt(id) }])
+                    .select();
+
+                if (error) {
+                    throw error;
+                }
+
+                showMessage(`✅ Record added successfully! ID: ${id}`, 'success');
+                form.reset();
+                loadRecords(); // Refresh the records list
+                
+            } catch (error) {
+                console.error('Error adding record:', error);
+                showMessage(`❌ Error: ${error.message}`, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'Add Record';
+            }
+        }
+
+        // Load records function
+        async function loadRecords() {
+            try {
+                recordsList.innerHTML = '<div class="empty-state"><span class="loading"></span>Loading records...</div>';
+
+                const { data, error } = await supabase
+                    .from('names')
+                    .select('*')
+                    .order('id', { ascending: true });
+
+                if (error) {
+                    throw error;
+                }
+
+                if (data.length === 0) {
+                    recordsList.innerHTML = '<div class="empty-state">No records found. Add some records to get started!</div>';
+                    return;
+                }
+
+                recordsList.innerHTML = data.map(record => `
+                    <div class="record-item">
+                        <span class="record-id">ID: ${record.id}</span>
+                        <span class="record-time">Record #${record.id}</span>
+                    </div>
+                `).join('');
+
+            } catch (error) {
+                console.error('Error loading records:', error);
+                recordsList.innerHTML = `<div class="empty-state" style="color: #e74c3c;">Error loading records: ${error.message}</div>`;
+            }
+        }
+
+        // Form submit handler
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            const recordId = formData.get('recordId');
+            
+            if (!recordId || isNaN(recordId)) {
+                showMessage('❌ Please enter a valid ID number', 'error');
+                return;
+            }
+
+            await addRecord(recordId);
+        });
+
+        // Test connection on page load
+        window.addEventListener('load', async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('names')
+                    .select('count', { count: 'exact', head: true });
+
+                if (error) {
+                    throw error;
+                }
+
+                showMessage('🟢 Successfully connected to Supabase!', 'success');
+                
+            } catch (error) {
+                console.error('Connection error:', error);
+                showMessage(`🔴 Connection failed: ${error.message}`, 'error');
+            }
+        });
+    </script>
 </body>
 </html>

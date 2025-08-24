@@ -305,41 +305,145 @@
     </div>
 
     <script>
+        // Initialize logging immediately
+        console.log('🚀 SCRIPT STARTED: Page loading...');
+        
         // Initialize Supabase client
         const supabaseUrl = 'https://jxemqeugeytuaxpuhrgp.supabase.co';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4ZW1xZXVnZXl0dWF4cHVocmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwNTg4NzUsImV4cCI6MjA3MTYzNDg3NX0.mxmFOK5zENGxjwh4xo_kHPPr6NoscqpiNhXiMUwcj78';
+        
+        console.log('🔗 SUPABASE CONFIG:', { url: supabaseUrl, keyPrefix: supabaseKey.substring(0, 20) });
+        
+        // Check if Supabase is loaded
+        if (typeof window.supabase === 'undefined') {
+            console.error('❌ SUPABASE NOT LOADED: window.supabase is undefined');
+            alert('ERROR: Supabase library failed to load!');
+        } else {
+            console.log('✅ SUPABASE LIBRARY LOADED');
+        }
+        
         const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+        console.log('✅ SUPABASE CLIENT CREATED:', supabase);
 
         // DOM elements
-        const form = document.getElementById('addForm');
-        const messageDiv = document.getElementById('message');
-        const recordsList = document.getElementById('recordsList');
-        const submitBtn = document.getElementById('submitBtn');
-        const debugLog = document.getElementById('debugLog');
+        let form, messageDiv, recordsList, submitBtn, debugLog;
 
         // Debug logging function
         function logDebug(message, type = 'info') {
             const timestamp = new Date().toLocaleTimeString();
-            const logEntry = `[${timestamp}] ${message}\n`;
+            const logEntry = `[${timestamp}] ${message}`;
             
-            let className = 'log-info';
-            if (type === 'error') className = 'log-error';
-            if (type === 'success') className = 'log-success';
-            
-            const logElement = document.createElement('span');
-            logElement.className = className;
-            logElement.textContent = logEntry;
-            
-            debugLog.appendChild(logElement);
-            debugLog.scrollTop = debugLog.scrollHeight;
-            
-            // Also log to browser console
+            // Always log to console first
             console.log(`[SUPABASE] ${message}`);
+            
+            // Try to log to debug div if it exists
+            if (debugLog) {
+                let className = 'log-info';
+                if (type === 'error') className = 'log-error';
+                if (type === 'success') className = 'log-success';
+                
+                const logElement = document.createElement('span');
+                logElement.className = className;
+                logElement.textContent = logEntry + '\n';
+                
+                debugLog.appendChild(logElement);
+                debugLog.scrollTop = debugLog.scrollHeight;
+            } else {
+                console.log('⚠️ DEBUG LOG ELEMENT NOT FOUND');
+            }
         }
+
+        // Initialize everything when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🎯 DOM LOADED: Initializing elements...');
+            
+            // Get DOM elements
+            form = document.getElementById('addForm');
+            messageDiv = document.getElementById('message');
+            recordsList = document.getElementById('recordsList');
+            submitBtn = document.getElementById('submitBtn');
+            debugLog = document.getElementById('debugLog');
+            
+            console.log('🔍 DOM ELEMENTS:', {
+                form: !!form,
+                messageDiv: !!messageDiv,
+                recordsList: !!recordsList,
+                submitBtn: !!submitBtn,
+                debugLog: !!debugLog
+            });
+            
+            logDebug('🎯 DOM READY: All elements initialized');
+            logDebug('🔗 SUPABASE CLIENT: ' + (supabase ? 'READY' : 'FAILED'));
+            
+            // Test connection immediately
+            testConnection();
+            
+            // Add form event listener
+            if (form) {
+                form.addEventListener('submit', handleFormSubmit);
+                logDebug('📋 FORM LISTENER: Added submit handler');
+            } else {
+                logDebug('❌ FORM ERROR: Form element not found', 'error');
+            }
+        });
 
         // Clear debug log
         function clearDebugLog() {
-            debugLog.innerHTML = 'Debug log cleared...\n';
+            if (debugLog) {
+                debugLog.innerHTML = 'Debug log cleared...\n';
+            }
+            console.clear();
+            logDebug('🧹 DEBUG LOG CLEARED');
+        }
+
+        // Test connection function
+        async function testConnection() {
+            try {
+                logDebug('🌐 TESTING CONNECTION: Starting Supabase connection test');
+                logDebug(`🔗 URL: ${supabaseUrl}`);
+                logDebug(`🔑 KEY: ${supabaseKey.substring(0, 30)}...`);
+
+                const { data, error } = await supabase
+                    .from('names')
+                    .select('count', { count: 'exact', head: true });
+
+                logDebug(`📥 CONNECTION RESPONSE: ${JSON.stringify({ data, error }, null, 2)}`);
+
+                if (error) {
+                    logDebug(`❌ CONNECTION FAILED: ${error.message}`, 'error');
+                    showMessage(`🔴 Connection failed: ${error.message}`, 'error');
+                    return false;
+                }
+
+                logDebug(`✅ CONNECTION SUCCESS!`, 'success');
+                showMessage('🟢 Successfully connected to Supabase!', 'success');
+                return true;
+                
+            } catch (error) {
+                logDebug(`💥 CONNECTION ERROR: ${error.message}`, 'error');
+                showMessage(`🔴 Connection error: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        // Handle form submission
+        async function handleFormSubmit(e) {
+            e.preventDefault();
+            logDebug('📝 FORM SUBMIT: Form submission detected');
+            
+            const formData = new FormData(form);
+            const recordId = formData.get('recordId');
+            
+            logDebug(`📊 FORM DATA: recordId = "${recordId}"`);
+            
+            if (!recordId || isNaN(recordId)) {
+                logDebug('❌ VALIDATION FAILED: Invalid ID provided', 'error');
+                showMessage('❌ Please enter a valid ID number', 'error');
+                return;
+            }
+
+            logDebug(`✅ VALIDATION PASSED: ID "${recordId}" is valid`);
+            await addRecord(recordId);
         }
 
         // Show message function
@@ -438,50 +542,50 @@
             }
         }
 
-        // Form submit handler
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(form);
-            const recordId = formData.get('recordId');
+        // Form submit handler - REMOVE THIS OLD ONE
+        // form.addEventListener('submit', async (e) => {
+        //     e.preventDefault();
+        //     const formData = new FormData(form);
+        //     const recordId = formData.get('recordId');
             
-            if (!recordId || isNaN(recordId)) {
-                showMessage('❌ Please enter a valid ID number', 'error');
-                return;
-            }
+        //     if (!recordId || isNaN(recordId)) {
+        //         showMessage('❌ Please enter a valid ID number', 'error');
+        //         return;
+        //     }
 
-            await addRecord(recordId);
-        });
+        //     await addRecord(recordId);
+        // });
 
-        // Test connection on page load
-        window.addEventListener('load', async () => {
-            try {
-                logDebug(`🌐 STARTING: Initial connection test to Supabase`);
-                logDebug(`🔗 CONNECTING TO: ${supabaseUrl}`);
-                logDebug(`🔑 USING KEY: ${supabaseKey.substring(0, 20)}...`);
+        // Test connection on page load - REMOVE THIS OLD ONE  
+        // window.addEventListener('load', async () => {
+        //     try {
+        //         logDebug(`🌐 STARTING: Initial connection test to Supabase`);
+        //         logDebug(`🔗 CONNECTING TO: ${supabaseUrl}`);
+        //         logDebug(`🔑 USING KEY: ${supabaseKey.substring(0, 20)}...`);
 
-                logDebug(`📡 CALLING: supabase.from('names').select('count', { count: 'exact', head: true })`);
+        //         logDebug(`📡 CALLING: supabase.from('names').select('count', { count: 'exact', head: true })`);
 
-                const { data, error } = await supabase
-                    .from('names')
-                    .select('count', { count: 'exact', head: true });
+        //         const { data, error } = await supabase
+        //             .from('names')
+        //             .select('count', { count: 'exact', head: true });
 
-                logDebug(`📥 CONNECTION RESPONSE: ${JSON.stringify({ data, error }, null, 2)}`);
+        //         logDebug(`📥 CONNECTION RESPONSE: ${JSON.stringify({ data, error }, null, 2)}`);
 
-                if (error) {
-                    logDebug(`❌ CONNECTION FAILED: ${error.message}`, 'error');
-                    logDebug(`🔍 CONNECTION ERROR DETAILS: ${JSON.stringify(error, null, 2)}`, 'error');
-                    throw error;
-                }
+        //         if (error) {
+        //             logDebug(`❌ CONNECTION FAILED: ${error.message}`, 'error');
+        //             logDebug(`🔍 CONNECTION ERROR DETAILS: ${JSON.stringify(error, null, 2)}`, 'error');
+        //             throw error;
+        //         }
 
-                logDebug(`✅ CONNECTION SUCCESS: Connected to Supabase successfully`, 'success');
-                showMessage('🟢 Successfully connected to Supabase!', 'success');
+        //         logDebug(`✅ CONNECTION SUCCESS: Connected to Supabase successfully`, 'success');
+        //         showMessage('🟢 Successfully connected to Supabase!', 'success');
                 
-            } catch (error) {
-                logDebug(`💥 CONNECTION ERROR: ${error.message}`, 'error');
-                console.error('Connection error:', error);
-                showMessage(`🔴 Connection failed: ${error.message}`, 'error');
-            }
-        });
+        //     } catch (error) {
+        //         logDebug(`💥 CONNECTION ERROR: ${error.message}`, 'error');
+        //         console.error('Connection error:', error);
+        //         showMessage(`🔴 Connection failed: ${error.message}`, 'error');
+        //     }
+        // });
     </script>
 </body>
 </html>

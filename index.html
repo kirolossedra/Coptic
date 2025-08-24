@@ -127,6 +127,45 @@
             font-size: 1.5rem;
         }
         
+        .debug-section {
+            background: #1a1a1a;
+            color: #00ff00;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .debug-section h3 {
+            color: #ffffff;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+        
+        .debug-log {
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .log-timestamp {
+            color: #888;
+        }
+        
+        .log-success {
+            color: #00ff00;
+        }
+        
+        .log-error {
+            color: #ff4444;
+        }
+        
+        .log-info {
+            color: #4facfe;
+        }
+        
         .records-list {
             max-height: 300px;
             overflow-y: auto;
@@ -234,6 +273,12 @@
         <div class="content">
             <div id="message"></div>
             
+            <div class="debug-section">
+                <h3>🔍 Debug Console</h3>
+                <button class="btn" onclick="clearDebugLog()" style="margin-bottom: 15px; padding: 8px 16px; font-size: 12px;">Clear Log</button>
+                <div id="debugLog" class="debug-log">Waiting for API calls...</div>
+            </div>
+            
             <div class="form-section">
                 <h2>Add New Record</h2>
                 <form id="addForm">
@@ -270,6 +315,32 @@
         const messageDiv = document.getElementById('message');
         const recordsList = document.getElementById('recordsList');
         const submitBtn = document.getElementById('submitBtn');
+        const debugLog = document.getElementById('debugLog');
+
+        // Debug logging function
+        function logDebug(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}\n`;
+            
+            let className = 'log-info';
+            if (type === 'error') className = 'log-error';
+            if (type === 'success') className = 'log-success';
+            
+            const logElement = document.createElement('span');
+            logElement.className = className;
+            logElement.textContent = logEntry;
+            
+            debugLog.appendChild(logElement);
+            debugLog.scrollTop = debugLog.scrollHeight;
+            
+            // Also log to browser console
+            console.log(`[SUPABASE] ${message}`);
+        }
+
+        // Clear debug log
+        function clearDebugLog() {
+            debugLog.innerHTML = 'Debug log cleared...\n';
+        }
 
         // Show message function
         function showMessage(text, type = 'success') {
@@ -282,26 +353,40 @@
         // Add record function
         async function addRecord(id) {
             try {
+                logDebug(`🚀 STARTING: Add record with ID: ${id}`);
                 submitBtn.disabled = true;
                 submitBtn.innerHTML = '<span class="loading"></span>Adding...';
 
+                logDebug(`📡 CALLING: supabase.from('names').insert([{ id: ${id} }]).select()`);
+                
                 const { data, error } = await supabase
                     .from('names')
                     .insert([{ id: parseInt(id) }])
                     .select();
 
+                logDebug(`📥 RESPONSE: ${JSON.stringify({ data, error }, null, 2)}`);
+
                 if (error) {
+                    logDebug(`❌ ERROR DETECTED: ${error.message}`, 'error');
+                    logDebug(`🔍 ERROR DETAILS: ${JSON.stringify(error, null, 2)}`, 'error');
                     throw error;
                 }
 
+                logDebug(`✅ SUCCESS: Record inserted successfully`, 'success');
+                logDebug(`📊 INSERTED DATA: ${JSON.stringify(data, null, 2)}`, 'success');
+
                 showMessage(`✅ Record added successfully! ID: ${id}`, 'success');
                 form.reset();
-                loadRecords(); // Refresh the records list
+                
+                logDebug(`🔄 TRIGGERING: loadRecords() to refresh list`);
+                loadRecords();
                 
             } catch (error) {
+                logDebug(`💥 CATCH BLOCK: ${error.message}`, 'error');
                 console.error('Error adding record:', error);
                 showMessage(`❌ Error: ${error.message}`, 'error');
             } finally {
+                logDebug(`🏁 FINALLY: Resetting button state`);
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = 'Add Record';
             }
@@ -310,22 +395,33 @@
         // Load records function
         async function loadRecords() {
             try {
+                logDebug(`🔄 STARTING: Load all records from 'names' table`);
                 recordsList.innerHTML = '<div class="empty-state"><span class="loading"></span>Loading records...</div>';
+
+                logDebug(`📡 CALLING: supabase.from('names').select('*').order('id', { ascending: true })`);
 
                 const { data, error } = await supabase
                     .from('names')
                     .select('*')
                     .order('id', { ascending: true });
 
+                logDebug(`📥 RESPONSE: ${JSON.stringify({ data, error }, null, 2)}`);
+
                 if (error) {
+                    logDebug(`❌ ERROR DETECTED: ${error.message}`, 'error');
+                    logDebug(`🔍 ERROR DETAILS: ${JSON.stringify(error, null, 2)}`, 'error');
                     throw error;
                 }
 
+                logDebug(`✅ SUCCESS: Retrieved ${data.length} records`, 'success');
+
                 if (data.length === 0) {
+                    logDebug(`📭 EMPTY RESULT: No records found in table`);
                     recordsList.innerHTML = '<div class="empty-state">No records found. Add some records to get started!</div>';
                     return;
                 }
 
+                logDebug(`🎨 RENDERING: Creating HTML for ${data.length} records`);
                 recordsList.innerHTML = data.map(record => `
                     <div class="record-item">
                         <span class="record-id">ID: ${record.id}</span>
@@ -333,7 +429,10 @@
                     </div>
                 `).join('');
 
+                logDebug(`✅ RENDERED: Successfully displayed all records`, 'success');
+
             } catch (error) {
+                logDebug(`💥 CATCH BLOCK: ${error.message}`, 'error');
                 console.error('Error loading records:', error);
                 recordsList.innerHTML = `<div class="empty-state" style="color: #e74c3c;">Error loading records: ${error.message}</div>`;
             }
@@ -356,17 +455,29 @@
         // Test connection on page load
         window.addEventListener('load', async () => {
             try {
+                logDebug(`🌐 STARTING: Initial connection test to Supabase`);
+                logDebug(`🔗 CONNECTING TO: ${supabaseUrl}`);
+                logDebug(`🔑 USING KEY: ${supabaseKey.substring(0, 20)}...`);
+
+                logDebug(`📡 CALLING: supabase.from('names').select('count', { count: 'exact', head: true })`);
+
                 const { data, error } = await supabase
                     .from('names')
                     .select('count', { count: 'exact', head: true });
 
+                logDebug(`📥 CONNECTION RESPONSE: ${JSON.stringify({ data, error }, null, 2)}`);
+
                 if (error) {
+                    logDebug(`❌ CONNECTION FAILED: ${error.message}`, 'error');
+                    logDebug(`🔍 CONNECTION ERROR DETAILS: ${JSON.stringify(error, null, 2)}`, 'error');
                     throw error;
                 }
 
+                logDebug(`✅ CONNECTION SUCCESS: Connected to Supabase successfully`, 'success');
                 showMessage('🟢 Successfully connected to Supabase!', 'success');
                 
             } catch (error) {
+                logDebug(`💥 CONNECTION ERROR: ${error.message}`, 'error');
                 console.error('Connection error:', error);
                 showMessage(`🔴 Connection failed: ${error.message}`, 'error');
             }

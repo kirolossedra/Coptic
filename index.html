@@ -9,7 +9,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.7.0/jspdf.plugin.autotable.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
-        import { getDatabase, ref, push, get, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-database.js";
+        import { getDatabase, ref, push, get, query, orderByChild, equalTo, remove } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAjBbnm8F76BCb9C5fluUyoZ2QnMSXlHOo",
@@ -35,6 +35,7 @@
             const etymologyInput = document.getElementById('etymology');
             const pdfSortSelect = document.getElementById('pdf-sort');
             const submitButton = document.querySelector('button[type="submit"]');
+            const eraseButton = document.getElementById('erase-button');
             const notificationContainer = document.getElementById('notification-container');
 
             // Create a notification function
@@ -58,17 +59,33 @@
                 }, 2000);
             }
 
-            // Function to check if entry already exists
-            function checkEntryExists(bohairic, sahidic, meaning) {
+            // Function to check if entry already exists (checks combinations, not individual fields)
+            function checkEntryExists(bohairic, oldCoptic, sahidic, meaning) {
                 return get(ref(database, 'fields'))
                     .then((snapshot) => {
                         if (snapshot.exists()) {
                             const data = snapshot.val();
-                            return Object.values(data).some(entry => 
-                                (entry.bohairic && entry.bohairic.toLowerCase() === bohairic.toLowerCase()) ||
-                                (entry.sahidic && entry.sahidic.toLowerCase() === sahidic.toLowerCase()) ||
-                                (entry.meaning && entry.meaning.toLowerCase() === meaning.toLowerCase())
-                            );
+                            return Object.values(data).some(entry => {
+                                // Check Bohairic + Meaning combination
+                                const bohairicMatch = bohairic && meaning && 
+                                    entry.bohairic && entry.meaning &&
+                                    entry.bohairic.toLowerCase() === bohairic.toLowerCase() && 
+                                    entry.meaning.toLowerCase() === meaning.toLowerCase();
+                                
+                                // Check Old Coptic + Meaning combination
+                                const oldCopticMatch = oldCoptic && meaning && 
+                                    entry.oldCoptic && entry.meaning &&
+                                    entry.oldCoptic.toLowerCase() === oldCoptic.toLowerCase() && 
+                                    entry.meaning.toLowerCase() === meaning.toLowerCase();
+                                
+                                // Check Sahidic + Meaning combination
+                                const sahidicMatch = sahidic && meaning && 
+                                    entry.sahidic && entry.meaning &&
+                                    entry.sahidic.toLowerCase() === sahidic.toLowerCase() && 
+                                    entry.meaning.toLowerCase() === meaning.toLowerCase();
+                                
+                                return bohairicMatch || oldCopticMatch || sahidicMatch;
+                            });
                         }
                         return false;
                     });
@@ -89,11 +106,11 @@
                     return;
                 }
 
-                // Check if entry already exists (basic duplicate check)
-                checkEntryExists(bohairic, sahidic, meaning)
+                // Check if entry already exists (combination-based duplicate check)
+                checkEntryExists(bohairic, oldCoptic, sahidic, meaning)
                     .then((exists) => {
-                        if (exists && (bohairic || sahidic || meaning)) {
-                            showNotification('A similar entry already exists!', true);
+                        if (exists) {
+                            showNotification('A similar combination already exists! (Bohairic+Meaning, Old Coptic+Meaning, or Sahidic+Meaning)', true);
                             return;
                         }
 
@@ -226,6 +243,60 @@
                     showNotification('Failed to generate PDF ❌', true);
                 }
             }
+
+            // Erase button functionality
+            eraseButton.addEventListener('click', () => {
+                // Create a custom confirmation dialog
+                const confirmDialog = document.createElement('div');
+                confirmDialog.className = 'confirm-dialog';
+                confirmDialog.innerHTML = `
+                    <div class="confirm-content">
+                        <h3>🔥 CONFIRM DESTRUCTION 🔥</h3>
+                        <p>Are you absolutely sure you want to erase ALL entries from the Ancient Coptic Dictionary?</p>
+                        <p class="warning-text"><strong>This action cannot be undone!</strong></p>
+                        <div class="confirm-buttons">
+                            <button class="confirm-yes danger-button">𓊹 YES, ERASE ALL 𓊹</button>
+                            <button class="confirm-no">𓈖 Cancel 𓈖</button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(confirmDialog);
+                
+                // Show dialog
+                setTimeout(() => {
+                    confirmDialog.classList.add('visible');
+                }, 10);
+                
+                // Handle confirmation
+                confirmDialog.querySelector('.confirm-yes').addEventListener('click', () => {
+                    // Remove the entire fields node
+                    remove(ref(database, 'fields'))
+                        .then(() => {
+                            showNotification('🔥 ALL ENTRIES HAVE BEEN ERASED! Database cleared successfully! 🔥');
+                            document.body.removeChild(confirmDialog);
+                        })
+                        .catch((error) => {
+                            console.error("Error erasing database: ", error);
+                            showNotification('Failed to erase database ❌', true);
+                            document.body.removeChild(confirmDialog);
+                        });
+                });
+                
+                // Handle cancellation
+                confirmDialog.querySelector('.confirm-no').addEventListener('click', () => {
+                    document.body.removeChild(confirmDialog);
+                    showNotification('Erase operation cancelled. Data is safe! ✅');
+                });
+                
+                // Close on background click
+                confirmDialog.addEventListener('click', (e) => {
+                    if (e.target === confirmDialog) {
+                        document.body.removeChild(confirmDialog);
+                        showNotification('Erase operation cancelled. Data is safe! ✅');
+                    }
+                });
+            });
         });
     </script>
     <style>
@@ -407,6 +478,99 @@
             margin-bottom: 10px;
         }
 
+        /* Danger section styling */
+        .danger-section {
+            background: linear-gradient(145deg, rgba(220, 20, 60, 0.1), rgba(139, 0, 0, 0.1));
+            border: 2px solid #dc143c;
+        }
+
+        .danger-section::before {
+            content: '⚠️';
+            color: #dc143c;
+        }
+
+        .warning-text {
+            color: #dc143c;
+            font-weight: 600;
+            margin: 10px 0;
+            text-align: center;
+        }
+
+        .danger-button {
+            background: linear-gradient(145deg, #dc143c, #8b0000) !important;
+            border: 2px solid #ff6347;
+        }
+
+        .danger-button:hover {
+            background: linear-gradient(145deg, #8b0000, #ff0000) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(220, 20, 60, 0.4);
+        }
+
+        /* Confirmation dialog */
+        .confirm-dialog {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .confirm-dialog.visible {
+            opacity: 1;
+        }
+
+        .confirm-content {
+            background: linear-gradient(145deg, #fff8dc, #faf0e6);
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            max-width: 500px;
+            margin: 20px;
+            border: 3px solid #d4af37;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .confirm-content h3 {
+            color: #dc143c;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+
+        .confirm-content p {
+            margin: 10px 0;
+            color: #8b4513;
+        }
+
+        .confirm-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .confirm-buttons button {
+            flex: 1;
+            max-width: 150px;
+        }
+
+        .confirm-no {
+            background: linear-gradient(145deg, #228b22, #32cd32) !important;
+            border: 2px solid #90ee90;
+        }
+
+        .confirm-no:hover {
+            background: linear-gradient(145deg, #32cd32, #7cfc00) !important;
+        }
+
         @media (max-width: 600px) {
             body {
                 background: linear-gradient(135deg, #daa520 0%, #f4e4a6 50%, #daa520 100%);
@@ -486,6 +650,12 @@
                 
                 <button type="submit">𓊪𓏏𓊖 Generate PDF 𓊪𓏏𓊖</button>
             </form>
+        </div>
+
+        <h2>Database Management</h2>
+        <div class="form-section danger-section">
+            <p class="warning-text">⚠️ Warning: This will permanently delete ALL entries from the dictionary!</p>
+            <button type="button" id="erase-button" class="danger-button">𓊹𓊹 ERASE ALL ENTRIES 𓊹𓊹</button>
         </div>
     </div>
     <!-- Notification container -->

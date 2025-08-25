@@ -7,6 +7,8 @@
     <!-- Firebase SDK -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.7.0/jspdf.plugin.autotable.min.js"></script>
+    <!-- SheetJS for Excel handling -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
         import { getDatabase, ref, push, get, query, orderByChild, equalTo, remove } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-database.js";
@@ -27,6 +29,8 @@
         window.addEventListener('DOMContentLoaded', () => {
             const form = document.getElementById('field-form');
             const pdfForm = document.getElementById('pdf-form');
+            const excelForm = document.getElementById('excel-form');
+            const downloadExcelForm = document.getElementById('download-excel-form');
             const bohairicInput = document.getElementById('bohairic');
             const oldCopticInput = document.getElementById('old-coptic');
             const sahidicInput = document.getElementById('sahidic');
@@ -34,8 +38,10 @@
             const meaningInput = document.getElementById('meaning');
             const etymologyInput = document.getElementById('etymology');
             const pdfSortSelect = document.getElementById('pdf-sort');
+            const excelSortSelect = document.getElementById('excel-sort');
             const submitButton = document.querySelector('button[type="submit"]');
             const eraseButton = document.getElementById('erase-button');
+            const excelFileInput = document.getElementById('excel-file');
             const notificationContainer = document.getElementById('notification-container');
 
             // Create a notification function
@@ -91,6 +97,184 @@
                     });
             }
 
+            // Function to process Excel file
+            function processExcelFile(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = XLSX.read(data, { type: 'array', cellText: false, cellDates: true });
+                            
+                            // Get the first worksheet
+                            const firstSheetName = workbook.SheetNames[0];
+                            const worksheet = workbook.Sheets[firstSheetName];
+                            
+                            // Convert to JSON with header row
+                            const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+                                header: 1,
+                                defval: '',
+                                raw: false
+                            });
+                            
+                            if (jsonData.length < 2) {
+                                reject(new Error('Excel file must contain at least a header row and one data row.'));
+                                return;
+                            }
+                            
+                            // Get header row and normalize it
+                            const headers = jsonData[0].map(h => h.toString().toLowerCase().trim());
+                            
+                            // Map Excel column names to our field names
+                            const fieldMapping = {
+                                'meaning': 'meaning',
+                                'etymology': 'etymology',
+                                'sahidic': 'sahidic',
+                                'bohairic': 'bohairic',
+                                'old coptic': 'oldCoptic',
+                                'other': 'otherDialects'
+                            };
+                            
+                            // Find column indices
+                            const columnIndices = {};
+                            Object.keys(fieldMapping).forEach(excelField => {
+                                const index = headers.findIndex(h => h === excelField);
+                                if (index !== -1) {
+                                    columnIndices[fieldMapping[excelField]] = index;
+                                }
+                            });
+                            
+                            // Process data rows
+                            const entries = [];
+                            for (let i = 1; i < jsonData.length; i++) {
+                                const row = jsonData[i];
+                                
+                                // Skip empty rows
+                                if (!row || row.every(cell => !cell || cell.toString().trim() === '')) {
+                                    continue;
+                                }
+                                
+                                const entry = {
+                                    bohairic: columnIndices.bohairic !== undefined ? (row[columnIndices.bohairic] || '').toString().trim() : '',
+                                    oldCoptic: columnIndices.oldCoptic !== undefined ? (row[columnIndices.oldCoptic] || '').toString().trim() : '',
+                                    sahidic: columnIndices.sahidic !== undefined ? (row[columnIndices.sahidic] || '').toString().trim() : '',
+                                    otherDialects: columnIndices.otherDialects !== undefined ? (row[columnIndices.otherDialects] || '').toString().trim() : '',
+                                    meaning: columnIndices.meaning !== undefined ? (row[columnIndices.meaning] || '').toString().trim() : '',
+                                    etymology: columnIndices.etymology !== undefined ? (row[columnIndices.etymology] || '').toString().trim() : ''
+                                };
+                                
+                                // Only add entries that have at least one non-empty field
+                                if (Object.values(entry).some(value => value !== '')) {
+                                    entries.push(entry);
+                                }
+                            }
+                            
+                            resolve(entries);
+                        } catch (error) {
+                            reject(error);
+                        }
+                    };
+                    
+                    reader.onerror = function() {
+                        reject(new Error('Failed to read the Excel file.'));
+                    };
+                    
+                    reader.readAsArrayBuffer(file);
+                });
+            }
+
+            // Function to save entries to Firebase
+            async function saveEntriesToFirebase(entries) {
+                let successCount = 0;
+                let duplicateCount = 0;
+                let errorCount = 0;
+                
+                for (const entry of entries) {
+                    try {
+                        // Check if entry already exists
+                        const exists = await checkEntryExists(
+                            entry.bohairic, 
+                            entry.oldCoptic, 
+                            entry.sahidic, 
+                            entry.meaning
+                        );
+                        
+                        if (exists) {
+                            duplicateCount++;
+                            continue;
+                        }
+                        
+                        // Save to Firebase
+                        await push(ref(database, 'fields/'), {
+                            ...entry,
+                            timestamp: Date.now()
+                        });
+                        
+                        successCount++;
+                    } catch (error) {
+                        console.error('Error saving entry:', entry, error);
+                        errorCount++;
+                    }
+                }
+                
+                return { successCount, duplicateCount, errorCount };
+            }
+
+            // Function to download database as Excel
+            function downloadDatabaseAsExcel(entries, sortOrder) {
+                try {
+                    // Sort entries
+                    if (sortOrder === 'alphabetical') {
+                        entries.sort((a, b) => a.bohairic.localeCompare(b.bohairic));
+                    }
+                    
+                    // Prepare data for Excel
+                    const excelData = [
+                        // Header row
+                        ['Meaning', 'Etymology', 'Sahidic', 'Bohairic', 'Old Coptic', 'Other', 'Date Added']
+                    ];
+                    
+                    // Data rows
+                    entries.forEach(entry => {
+                        excelData.push([
+                            entry.meaning || '',
+                            entry.etymology || '',
+                            entry.sahidic || '',
+                            entry.bohairic || '',
+                            entry.oldCoptic || '',
+                            entry.otherDialects || '',
+                            new Date(entry.timestamp).toLocaleDateString()
+                        ]);
+                    });
+                    
+                    // Create workbook
+                    const worksheet = XLSX.utils.aoa_to_sheet(excelData);
+                    const workbook = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(workbook, worksheet, 'Coptic Dictionary');
+                    
+                    // Set column widths
+                    const colWidths = [
+                        { wch: 30 }, // Meaning
+                        { wch: 30 }, // Etymology
+                        { wch: 20 }, // Sahidic
+                        { wch: 20 }, // Bohairic
+                        { wch: 20 }, // Old Coptic
+                        { wch: 20 }, // Other
+                        { wch: 15 }  // Date Added
+                    ];
+                    worksheet['!cols'] = colWidths;
+                    
+                    // Generate and download file
+                    const filename = `coptic_dictionary_${new Date().toISOString().split('T')[0]}.xlsx`;
+                    XLSX.writeFile(workbook, filename, { bookType: 'xlsx', type: 'binary' });
+                    
+                    showNotification('Excel file downloaded successfully! ✅');
+                } catch (error) {
+                    console.error('Error generating Excel file:', error);
+                    showNotification('Failed to generate Excel file ❌', true);
+                }
+            }
+
             form.addEventListener('submit', (event) => {
                 event.preventDefault();
                 const bohairic = bohairicInput.value.trim();
@@ -141,6 +325,93 @@
                     .catch((error) => {
                         console.error("Error saving entry: ", error);
                         showNotification('Failed to add entry ❌', true);
+                    });
+            });
+
+            // Excel upload form handler
+            excelForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                
+                const file = excelFileInput.files[0];
+                if (!file) {
+                    showNotification('Please select an Excel file first!', true);
+                    return;
+                }
+                
+                if (!file.name.toLowerCase().match(/\.(xlsx|xls)$/)) {
+                    showNotification('Please select a valid Excel file (.xlsx or .xls)!', true);
+                    return;
+                }
+                
+                showNotification('Processing Excel file...');
+                
+                processExcelFile(file)
+                    .then(entries => {
+                        if (entries.length === 0) {
+                            showNotification('No valid entries found in the Excel file!', true);
+                            return;
+                        }
+                        
+                        return saveEntriesToFirebase(entries);
+                    })
+                    .then(result => {
+                        if (result) {
+                            const { successCount, duplicateCount, errorCount } = result;
+                            let message = `✅ Excel import completed! `;
+                            message += `Added: ${successCount}, Duplicates skipped: ${duplicateCount}`;
+                            if (errorCount > 0) {
+                                message += `, Errors: ${errorCount}`;
+                            }
+                            showNotification(message);
+                            
+                            // Clear file input
+                            excelFileInput.value = '';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error processing Excel file:', error);
+                        showNotification(`Failed to process Excel file: ${error.message} ❌`, true);
+                    });
+            });
+
+            // Download Excel form handler
+            downloadExcelForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const selectedSort = excelSortSelect.value;
+
+                // Get all entries
+                get(ref(database, 'fields'))
+                    .then((snapshot) => {
+                        if (snapshot.exists()) {
+                            const data = snapshot.val();
+                            let entries = [];
+
+                            // Convert to array
+                            Object.keys(data).forEach(key => {
+                                const entry = data[key];
+                                entries.push({
+                                    bohairic: entry.bohairic || '',
+                                    oldCoptic: entry.oldCoptic || '',
+                                    sahidic: entry.sahidic || '',
+                                    otherDialects: entry.otherDialects || '',
+                                    meaning: entry.meaning || '',
+                                    etymology: entry.etymology || '',
+                                    timestamp: entry.timestamp || Date.now()
+                                });
+                            });
+
+                            if (entries.length > 0) {
+                                downloadDatabaseAsExcel(entries, selectedSort);
+                            } else {
+                                showNotification('No entries found in the database.', true);
+                            }
+                        } else {
+                            showNotification('No entries found in the database.', true);
+                        }
+                    })
+                    .catch((error) => {
+                        console.error("Error fetching entries: ", error);
+                        showNotification('Failed to download Excel file ❌', true);
                     });
             });
 
@@ -397,6 +668,12 @@
             background: rgba(255, 248, 220, 0.8);
         }
 
+        input[type="file"] {
+            padding: 8px;
+            background: rgba(255, 248, 220, 0.9);
+            border: 2px dashed #d4af37;
+        }
+
         input:focus, select:focus {
             outline: none;
             border-color: #b8860b;
@@ -430,7 +707,7 @@
             border: 1px solid rgba(212, 175, 55, 0.3);
         }
 
-        #pdf-form {
+        #pdf-form, #excel-form, #download-excel-form {
             background: linear-gradient(145deg, rgba(212, 175, 55, 0.1), rgba(184, 134, 11, 0.1));
             border: 2px solid #d4af37;
         }
@@ -639,16 +916,38 @@
             </form>
         </div>
         
+        <h2>Import from Excel</h2>
+        <div class="form-section">
+            <form id="excel-form">
+                <label for="excel-file">Excel File (Expected columns: Meaning, Etymology, Sahidic, Bohairic, Old Coptic, Other):</label>
+                <input type="file" id="excel-file" accept=".xlsx,.xls" required>
+                
+                <button type="submit">𓊪𓏏𓊖 Upload Excel 𓊪𓏏𓊖</button>
+            </form>
+        </div>
+        
         <h2>Download Dictionary</h2>
         <div class="form-section">
             <form id="pdf-form">
-                <label for="pdf-sort">Sort Order:</label>
+                <label for="pdf-sort">PDF Sort Order:</label>
                 <select id="pdf-sort" required>
                     <option value="alphabetical">Alphabetical (by Bohairic)</option>
                     <option value="chronological">Chronological (Date Added)</option>
                 </select>
                 
                 <button type="submit">𓊪𓏏𓊖 Generate PDF 𓊪𓏏𓊖</button>
+            </form>
+        </div>
+
+        <div class="form-section">
+            <form id="download-excel-form">
+                <label for="excel-sort">Excel Sort Order:</label>
+                <select id="excel-sort" required>
+                    <option value="alphabetical">Alphabetical (by Bohairic)</option>
+                    <option value="chronological">Chronological (Date Added)</option>
+                </select>
+                
+                <button type="submit">𓊪𓏏𓊖 Download Excel 𓊪𓏏𓊖</button>
             </form>
         </div>
 
